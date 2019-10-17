@@ -1,7 +1,0 @@
-epochs:			15
-dataset folders:	(['etron/Town01/ClientAP/no_cars_no_rain', 'etron/Town01/ClientAP/no_cars_no_rain_noise15', 'etron/Town01/ClientAP/no_cars_rain_noise10', 'etron/Town01/ClientAP/cars_no_rain_noise15', 'etron/Town01/ClientAP/cars_rain_noise10'], ['etron/Town04/ClientAP/no_cars_no_rain', 'etron/Town04/ClientAP/no_cars_rain_noise5', 'etron/Town04/ClientAP/cars_no_rain_noise5', 'etron/Town04/ClientAP/cars_rain_noise5', 'etron/Town01/ClientAP/brake_all_weather_noise15', 'etron/Town01/ClientAP/brake_all_weather'])
-steering correction:	0.05
-batch size:		32
-sampling interval:	2
-seq lenght: 		10
-
