@@ -2,6 +2,40 @@
 """
 Control the spurv with a joystick
 """
+import os
+import sys
+from subprocess import Popen, PIPE
+import pickle
+
+PYTHON_DUMP_ENVIRON = """\
+import sys
+import os
+import pickle
+data = pickle.dumps(os.environ)
+stdout = os.fdopen(sys.stdout.fileno(), "wb")
+stdout.write(data)
+"""
+
+def source_bash_file(path):
+    bash_cmds = [
+        "source '%s'" % path,
+        "python -c '%s'" % PYTHON_DUMP_ENVIRON,
+    ]
+    p = Popen(['bash', '-c', '&&'.join(bash_cmds)], stdout=PIPE)
+    stdout, _ = p.communicate()
+    if stdout:
+        environ = pickle.loads(stdout)
+        for k, v in environ.items():
+            if k == "PYTHONPATH":
+                # Reimport
+                for path in str(v).split(':'):
+                    sys.path.append(path)
+            print(k + ": " + v)
+            os.environ[k] = v
+
+
+source_bash_file('/opt/ros/kinetic/setup.bash')
+source_bash_file('/home/kia/Documents/Spurv/spurv_ws/devel/setup.bash')
 
 import rospy
 import cv2

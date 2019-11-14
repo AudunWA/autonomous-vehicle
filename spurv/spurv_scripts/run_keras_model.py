@@ -8,25 +8,12 @@ import os
 This script allows one to select and run a Keras model (in h5 format), stored in the "models" subfolder.
 """
 
-"""
-   Solves a memory issue, needs to be done before importing Keras 
-"""
-import tensorflow as tf
-
-config = tf.ConfigProto()
-config.gpu_options.per_process_gpu_memory_fraction = 0.7
-session = tf.Session(config=config)
-
 import subprocess
 import imp
 import cv2
 import numpy as np
-from tensorflow.keras.models import load_model, Model
 import threading
-import tensorflow.keras.backend as K
 import datetime
-import tensorflow as tf
-from scipy.optimize import curve_fit
 
 """
 Xbox controller input IDs
@@ -37,6 +24,9 @@ LEFT_HLC_BTN = 2  # X
 FORWARD_HLC_BTN = 0  # A
 RIGHT_HLC_BTN = 1  # B
 CHANGE_MODEL_AXIS = 6  # D-pad left/right
+
+
+JOY_THROTTLE_SECONDS = 1
 
 
 """
@@ -81,6 +71,8 @@ class RunModel(object):
         self.graph = None
 
         self.next_model_timer = None
+        self.joy_throttle_timer = None
+        self.is_joy_callback_throttled = False
 
         self.init_model(0)
         self.init_pub_sub()
@@ -213,13 +205,23 @@ class RunModel(object):
         elif bool(right_hlc):
             self.current_hlc = 2
 
+        if self.is_joy_callback_throttled:
+            return
+
+        if self.joy_throttle_timer:
+            self.joy_throttle_timer.cancel()
+
+        self.joy_throttle_timer = threading.Timer(JOY_THROTTLE_SECONDS, self.remove_joy_throttle)
+        self.joy_throttle_timer.start()
+        self.is_joy_callback_throttled = True
+
         # Go to next or previous model if requested
         change_model_axis = joyMessage.axes[CHANGE_MODEL_AXIS]
-        if self.model is not None:
-            if change_model_axis == -1.0:
-                self.init_model((self.model_index - 1) % len(self.models))
-            elif change_model_axis == 1.0:
-                self.init_model((self.model_index + 1) % len(self.models))
+        if self.model is not None and abs(change_model_axis) != 0.0:
+            self.change_model(change_model_axis)
+
+    def remove_joy_throttle(self):
+        self.is_joy_callback_throttled = False
 
     def publish_steering(self, throttle, angle):
         if self.autonomous_mode:
@@ -239,6 +241,19 @@ class RunModel(object):
 
         self.next_model_timer = threading.Timer(timeout, fn)
         self.next_model_timer.start()
+
+    def change_model(self, change_model_axis):
+        print("change_model_axis" + str(change_model_axis))
+        new_index = 0
+        if change_model_axis == -1.0:
+            new_index = (self.model_index - 1) % len(self.models)
+        elif change_model_axis == 1.0:
+            new_index = (self.model_index + 1) % len(self.models)
+
+        processThread = threading.Thread(target=self.init_model, args=(new_index,))
+        processThread.start()
+        pass
+
 
 def is_running_on_ros():
     try:
@@ -266,6 +281,18 @@ if __name__ == '__main__':
         from sensor_msgs.msg import Image
         from cv_bridge import CvBridge, CvBridgeError
         from ackermann_msgs.msg import AckermannDriveStamped
+
+        """
+           Solves a memory issue, needs to be done before importing Keras 
+        """
+        import tensorflow as tf
+
+        config = tf.ConfigProto()
+        config.gpu_options.per_process_gpu_memory_fraction = 0.7
+        session = tf.Session(config=config)
+        from tensorflow.keras.models import load_model, Model
+        import tensorflow.keras.backend as K
+        from scipy.optimize import curve_fit
 
         frame_id = rospy.get_param('~frame_id', 'odom')
         max_accel_x = rospy.get_param('~acc_lim_x', 1.0)

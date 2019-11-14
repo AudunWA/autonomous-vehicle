@@ -25,8 +25,7 @@ RECORD_BUTTON = 7  # Start button
 LEFT_HLC_BUTTON = 2  # X
 FORWARD_HLC_BUTTON = 0  # A
 RIGHT_HLC_BUTTON = 1  # B
-TOGGLE_NOISE_BUTTON = 6 # BACK
-
+TOGGLE_NOISE_BUTTON = 6  # BACK
 
 HLC_RESET_SECONDS = 10
 JOY_THROTTLE_SECONDS = 1
@@ -41,18 +40,18 @@ IMAGE_SCALE = 0.3
 """
 For steering
 """
-SPEED_AXIS=3
-SERVO_AXIS=0
-LIGHTS_BUTTON=2
-MAX_SPEED=0.6
+SPEED_AXIS = 3
+SERVO_AXIS = 0
+LIGHTS_BUTTON = 2
+MAX_SPEED = 0.6 # m/s
 
 # Steering noise
 MIN_NOISE = 0.2
 MAX_NOISE = 0.6
 
 frame_id = rospy.get_param("~frame_id", "odom")
-max_accel_x = rospy.get_param("~acc_lim_x" , 1.0)
-max_jerk_x = rospy.get_param("~jerk_lim_x" , 0.0)
+max_accel_x = rospy.get_param("~acc_lim_x", 1.0)
+max_jerk_x = rospy.get_param("~jerk_lim_x", 0.0)
 
 
 def safe_makedirs(path):
@@ -64,7 +63,6 @@ def safe_makedirs(path):
 
 
 class DataCollector:
-
     speedAxisValue = 0.0
     angleAxisValue = 0.0
 
@@ -94,7 +92,7 @@ class DataCollector:
         print 'Initializing datacollector.'
         self.current_speed = 0
         self.current_angle = 0
-        self.current_ackerman_timestamp = 0
+        self.current_ackermann_timestamp = 0
         self.recording = False
 
         self.setup_collection_folders()
@@ -109,7 +107,7 @@ class DataCollector:
         self.bridge = CvBridge()
 
         self.joystick_subscriber = rospy.Subscriber('/joy', Joy,
-                self._joy_callback)
+                                                    self._joy_callback)
 
         self._initPubSub()
         print("Spurv Joystick Driver initialized")
@@ -131,7 +129,7 @@ class DataCollector:
 
     def setup_collection_folders(self):
         self.folder_name = self.STORAGE_DIR \
-            + datetime.now().replace(microsecond=0).isoformat() + '/'
+                           + datetime.now().replace(microsecond=0).isoformat() + '/'
 
         safe_makedirs(self.folder_name)
         safe_makedirs(self.folder_name + 'images/')
@@ -142,7 +140,7 @@ class DataCollector:
 
         self.recording = True
         self.image_subscription = rospy.Subscriber('/fwd_camera/image_raw/compressed',
-                         CompressedImage, self._image_callback)
+                                                   CompressedImage, self._image_callback)
 
     def stop_collecting(self):
         print 'Stopping data collection. Press Start to continue collecting.'
@@ -151,7 +149,7 @@ class DataCollector:
 
     def get_image_path(self):
         return self.folder_name + 'images/' \
-            + str(self.frame_seq_number) + '.jpg'
+               + str(self.frame_seq_number) + '.jpg'
 
     def _image_callback(self, data_loc):
 
@@ -159,18 +157,18 @@ class DataCollector:
             return
 
         img_to_save = self.bridge.compressed_imgmsg_to_cv2(data_loc,
-                'bgr8')
+                                                           'bgr8')
         img_to_save = cv2.resize(img_to_save, (0, 0), fx=IMAGE_SCALE,
                                  fy=IMAGE_SCALE)
 
         img_path = self.get_image_path()
         img_timestamp = data_loc.header.stamp
         self.data_writer.writerow([self.current_speed,
-                                  self.current_angle,
-                                  self.high_level_command, img_path,
-                                  self.current_ackerman_timestamp,
-                                  img_timestamp,
-                                  self.current_angle_with_noise])
+                                   self.current_angle,
+                                   self.high_level_command, img_path,
+                                   self.current_ackermann_timestamp,
+                                   img_timestamp,
+                                   self.current_angle_with_noise])
 
         cv2.imwrite(img_path, img_to_save)
 
@@ -178,9 +176,9 @@ class DataCollector:
 
         if self.frame_seq_number % 50 == 0:
             print 'frame_seq_number = ' + str(self.frame_seq_number) \
-                + ', speed = ' + str(self.current_speed) + ', angle = ' \
-                + str(self.current_angle) + ', high_level_command = ' \
-                + str(self.high_level_command) + '.'
+                  + ', speed = ' + str(self.current_speed) + ', angle = ' \
+                  + str(self.current_angle) + ', high_level_command = ' \
+                  + str(self.high_level_command) + '.'
 
     def set_or_reset_hlc_timeout(self, timeout, fn):
         if self.hlc_timer:
@@ -190,7 +188,7 @@ class DataCollector:
         self.hlc_timer.start()
 
     def remove_joy_throttle(self):
-	    self.is_joy_callback_throttled = False
+        self.is_joy_callback_throttled = False
 
     def _joy_callback(self, joy_message):
 
@@ -202,7 +200,7 @@ class DataCollector:
         toggle_noise_button = joy_message.buttons[TOGGLE_NOISE_BUTTON]
 
         has_pressed_relevant_button = bool(record_button) \
-            or bool(left_hlc_button) or bool(right_hlc_button) or bool(toggle_noise_button)
+                                      or bool(left_hlc_button) or bool(right_hlc_button) or bool(toggle_noise_button)
 
         # Save speed ang angle values for thread
         self.speedAxisValue = speed_axis
@@ -213,7 +211,7 @@ class DataCollector:
 
         if bool(toggle_noise_button):
             self.noise_enabled = not self.noise_enabled
-            
+
         self.joy_throttle_timer = Timer(JOY_THROTTLE_SECONDS, self.remove_joy_throttle)
         self.joy_throttle_timer.start()
         self.is_joy_callback_throttled = True
@@ -228,13 +226,13 @@ class DataCollector:
             print 'Setting high_level_command = HLC_LEFT.'
             self.high_level_command = HLC_LEFT
             self.set_or_reset_hlc_timeout(HLC_RESET_SECONDS,
-                    self._reset_hlc)
+                                          self._reset_hlc)
         elif bool(right_hlc_button):
 
             print 'Setting high_level_command = HLC_RIGHT.'
             self.high_level_command = HLC_RIGHT
             self.set_or_reset_hlc_timeout(HLC_RESET_SECONDS,
-                    self._reset_hlc)
+                                          self._reset_hlc)
 
     def _reset_hlc(self):
         print 'Resetting high_level_command'
@@ -247,7 +245,7 @@ class DataCollector:
 
         self.current_angle = angleScaled
         self.current_speed = speedScaled
-        self.current_ackerman_timestamp = rospy.Time.now().to_nsec()
+        self.current_ackermann_timestamp = rospy.Time.now().to_nsec()
 
         if self.noise_enabled:
             if self.current_noise_peak == 0:
@@ -256,45 +254,43 @@ class DataCollector:
                 self.current_noise_peak = (MAX_NOISE * rand) + MIN_NOISE * pos
                 self.noise_add = self.current_noise_peak / 10
                 self.current_noise = 0
-                #print("Current noise peak: " + str(self.current_noise_peak))
+                # print("Current noise peak: " + str(self.current_noise_peak))
 
             self.current_noise += self.noise_add
-            if(abs(self.current_noise - self.current_noise_peak) < abs(self.current_noise_peak)*0.01):
+            if abs(self.current_noise - self.current_noise_peak) < abs(self.current_noise_peak) * 0.01:
                 self.noise_add *= -1
 
-            if(self.current_noise < 0.005 and self.current_noise > -0.005):
+            if 0.005 > self.current_noise > -0.005:
                 self.current_noise_peak = 0
                 self.nosie_add = 0
 
-        #print("Current noise: " + str(self.current_noise))
+        # print("Current noise: " + str(self.current_noise))
 
         self.current_angle_with_noise = angle + self.current_noise
-        
+
         msg = AckermannDriveStamped()
         msg.header.stamp = rospy.Time.now()
         msg.header.frame_id = frame_id
-        msg.drive.steering_angle =  self.current_angle_with_noise
+        msg.drive.steering_angle = self.current_angle_with_noise
         msg.drive.speed = speedScaled
         msg.drive.acceleration = max_accel_x
         msg.drive.jerk = max_jerk_x
 
         self.ackermannPub.publish(msg)
 
-
     def _thdLoop(self):
-        while(True):
-
-	    self.publishAckermann(self.speedAxisValue, self.angleAxisValue)
+        while True:
+            self.publishAckermann(self.speedAxisValue, self.angleAxisValue)
             sleep(0.10)
 
     def _map_range(
-        self,
-        x,
-        in_min,
-        in_max,
-        out_min,
-        out_max,
-        ):
+            self,
+            x,
+            in_min,
+            in_max,
+            out_min,
+            out_max,
+    ):
         """
         Remaps the values to a new range
         """
@@ -302,7 +298,7 @@ class DataCollector:
         if x is 0:
             return 0
         out = (x - in_min) * (out_max - out_min) / (in_max - in_min) \
-            + out_min
+              + out_min
         if out > out_max:
             return out_max
         elif out < out_min:
@@ -316,6 +312,3 @@ if __name__ == '__main__':
 
     print 'Press Start to begin recording...'
     rospy.spin()
-
-
-			
