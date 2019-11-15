@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" autoUpload="Always" serverName="nvidia@spurv:22" createEmptyFolders="true">
+    <serverData>
+      <paths name="nvidia@spurv:22">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/nvidia/ros/src/spurv_research/spurv_examples/src" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
+  </component>
+</project>
