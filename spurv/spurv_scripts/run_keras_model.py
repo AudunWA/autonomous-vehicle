@@ -27,6 +27,7 @@ CHANGE_MODEL_AXIS = 6  # D-pad left/right
 
 
 JOY_THROTTLE_SECONDS = 1
+SELECT_MODEL_THROTTLE_SECONDS = 0.2
 
 
 """
@@ -63,6 +64,7 @@ class RunModel(object):
         self.models = get_model_list()
         self.model = None
         self.model_index = 0
+        self.next_model_index = 0
         self.img_shape = None
         self.sequence_length = None
         self.sine_steering = None
@@ -73,8 +75,8 @@ class RunModel(object):
         self.next_model_timer = None
         self.joy_throttle_timer = None
         self.is_joy_callback_throttled = False
+        self.is_model_callback_throttled = False
 
-        self.init_model(0)
         self.init_pub_sub()
         self.image_history = []
         self.hlc_history = []
@@ -86,6 +88,11 @@ class RunModel(object):
         self.autonomous_mode = False
         self.model = None
         self.graph = None
+        self.image_history = []
+        self.hlc_history = []
+        self.info_history = []
+        self.current_hlc = 1
+
         print("Autonomous mode disabled.")
         K.clear_session()
 
@@ -98,11 +105,13 @@ class RunModel(object):
 
         self.model = load_model(MODELS_FOLDER + "/" + self.models[index], custom_objects={'custom': steering_loss})
         self.model_index = index
+        self.next_model_index = index
         self.graph = tf.get_default_graph()
         print("Setting graph to " + str(self.graph))
 
         (self.img_shape, self.sequence_length, self.sine_steering) = self.get_model_params(self.model)
 
+        print("Loaded model " + self.models[index])
         print("Image shape: " + str(self.img_shape) + ", sequence length: " + str(
             self.sequence_length) + ", sine steering? " + str(self.sine_steering))
 
@@ -187,41 +196,52 @@ class RunModel(object):
     def on_joy_callback(self, joyMessage):
         enable = joyMessage.buttons[ENABLE_AUTONOMOUS]
         disable = joyMessage.buttons[DISABLE_AUTONOMOUS]
-        if bool(enable):
-            self.autonomous_mode = True
-            print('Autonomous mode enabled')
-        if bool(disable):
-            self.autonomous_mode = False
-            print('Autonomous mode disabled')
+        if not self.is_joy_callback_throttled:
+            if bool(enable):
+                if self.next_model_index != self.model_index:
+                    self.change_model()
+                else:
+                    self.autonomous_mode = True
+                    print('Autonomous mode enabled')
+            if bool(disable):
+                self.autonomous_mode = False
+                print('Autonomous mode disabled')
 
-        left_hlc = joyMessage.buttons[LEFT_HLC_BTN]
-        forward_hlc = joyMessage.buttons[FORWARD_HLC_BTN]
-        right_hlc = joyMessage.buttons[RIGHT_HLC_BTN]
+            left_hlc = joyMessage.buttons[LEFT_HLC_BTN]
+            forward_hlc = joyMessage.buttons[FORWARD_HLC_BTN]
+            right_hlc = joyMessage.buttons[RIGHT_HLC_BTN]
 
-        if bool(left_hlc):
-            self.current_hlc = 0
-        elif bool(forward_hlc):
-            self.current_hlc = 1
-        elif bool(right_hlc):
-            self.current_hlc = 2
+            if bool(left_hlc):
+                self.current_hlc = 0
+            elif bool(forward_hlc):
+                self.current_hlc = 1
+            elif bool(right_hlc):
+                self.current_hlc = 2
 
-        if self.is_joy_callback_throttled:
+            if self.joy_throttle_timer:
+                self.joy_throttle_timer.cancel()
+
+            self.joy_throttle_timer = threading.Timer(JOY_THROTTLE_SECONDS, self.remove_joy_throttle)
+            self.joy_throttle_timer.start()
+            self.is_joy_callback_throttled = True
+
+        if self.is_model_callback_throttled:
             return
 
-        if self.joy_throttle_timer:
-            self.joy_throttle_timer.cancel()
-
-        self.joy_throttle_timer = threading.Timer(JOY_THROTTLE_SECONDS, self.remove_joy_throttle)
-        self.joy_throttle_timer.start()
-        self.is_joy_callback_throttled = True
+        self.set_or_reset_next_model_timer(SELECT_MODEL_THROTTLE_SECONDS, self.remove_model_throttle)
+        self.is_model_callback_throttled = True
 
         # Go to next or previous model if requested
         change_model_axis = joyMessage.axes[CHANGE_MODEL_AXIS]
-        if self.model is not None and abs(change_model_axis) != 0.0:
-            self.change_model(change_model_axis)
+        if abs(change_model_axis) != 0.0:
+            self.next_model_index = (self.next_model_index + int(change_model_axis)) % len(self.models)
+            print("Model to load: " + self.models[self.next_model_index])
 
     def remove_joy_throttle(self):
         self.is_joy_callback_throttled = False
+
+    def remove_model_throttle(self):
+        self.is_model_callback_throttled = False
 
     def publish_steering(self, throttle, angle):
         if self.autonomous_mode:
@@ -242,17 +262,9 @@ class RunModel(object):
         self.next_model_timer = threading.Timer(timeout, fn)
         self.next_model_timer.start()
 
-    def change_model(self, change_model_axis):
-        print("change_model_axis" + str(change_model_axis))
-        new_index = 0
-        if change_model_axis == -1.0:
-            new_index = (self.model_index - 1) % len(self.models)
-        elif change_model_axis == 1.0:
-            new_index = (self.model_index + 1) % len(self.models)
-
-        processThread = threading.Thread(target=self.init_model, args=(new_index,))
-        processThread.start()
-        pass
+    def change_model(self):
+        process_thread = threading.Thread(target=self.init_model, args=(self.next_model_index,))
+        process_thread.start()
 
 
 def is_running_on_ros():
