@@ -34,8 +34,8 @@ def source_bash_file(path):
             os.environ[k] = v
 
 
-source_bash_file('/opt/ros/kinetic/setup.bash')
-source_bash_file('/home/kia/Documents/Spurv/spurv_ws/devel/setup.bash')
+#source_bash_file('/opt/ros/kinetic/setup.bash')
+#source_bash_file('/home/kia/Documents/Spurv/spurv_ws/devel/setup.bash')
 
 import rospy
 import cv2
