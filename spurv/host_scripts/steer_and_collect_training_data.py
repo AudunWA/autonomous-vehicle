@@ -1,23 +1,21 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import os
-import errno
-import time
-import cv2
-from cv_bridge import CvBridge, CvBridgeError
-import numpy as np
 import csv
-import rospy
-from std_msgs.msg import Float64
-from sensor_msgs.msg import CompressedImage
-from ackermann_msgs.msg import AckermannDriveStamped
-from sensor_msgs.msg import Joy
+import cv2
+import errno
+import os
+import random
 from datetime import datetime
 from threading import Timer, Thread
-import random
 from time import sleep
+
+import rospy
+from ackermann_msgs.msg import AckermannDriveStamped
+from cv_bridge import CvBridge
 from expiringdict import ExpiringDict
+from sensor_msgs.msg import CompressedImage
+from sensor_msgs.msg import Joy
 
 cache = ExpiringDict(max_len=1000, max_age_seconds=2)
 
@@ -42,7 +40,6 @@ For steering
 """
 SPEED_AXIS = 3
 SERVO_AXIS = 0
-LIGHTS_BUTTON = 2
 MAX_SPEED = 0.6 # m/s
 
 # Steering noise
@@ -197,10 +194,12 @@ class DataCollector:
         record_button = joy_message.buttons[RECORD_BUTTON]
         left_hlc_button = joy_message.buttons[LEFT_HLC_BUTTON]
         right_hlc_button = joy_message.buttons[RIGHT_HLC_BUTTON]
+        reset_hlc_button = joy_message.buttons[FORWARD_HLC_BUTTON]
         toggle_noise_button = joy_message.buttons[TOGGLE_NOISE_BUTTON]
 
         has_pressed_relevant_button = bool(record_button) \
-                                      or bool(left_hlc_button) or bool(right_hlc_button) or bool(toggle_noise_button)
+                                      or bool(left_hlc_button) or bool(right_hlc_button) or bool(toggle_noise_button) \
+                                      or bool(reset_hlc_button)
 
         # Save speed ang angle values for thread
         self.speedAxisValue = speed_axis
@@ -228,11 +227,12 @@ class DataCollector:
             self.set_or_reset_hlc_timeout(HLC_RESET_SECONDS,
                                           self._reset_hlc)
         elif bool(right_hlc_button):
-
             print 'Setting high_level_command = HLC_RIGHT.'
             self.high_level_command = HLC_RIGHT
             self.set_or_reset_hlc_timeout(HLC_RESET_SECONDS,
                                           self._reset_hlc)
+        elif bool(reset_hlc_button):
+            self._reset_hlc()
 
     def _reset_hlc(self):
         print 'Resetting high_level_command'

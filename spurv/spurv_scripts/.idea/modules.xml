@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../laptop_scripts/.idea/laptop_scripts.iml" filepath="$PROJECT_DIR$/../laptop_scripts/.idea/laptop_scripts.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../host_scripts/.idea/laptop_scripts.iml" filepath="$PROJECT_DIR$/../host_scripts/.idea/laptop_scripts.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/spurv_scripts.iml" filepath="$PROJECT_DIR$/.idea/spurv_scripts.iml" />
     </modules>
   </component>

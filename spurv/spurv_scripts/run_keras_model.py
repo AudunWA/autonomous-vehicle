@@ -13,7 +13,6 @@ import imp
 import cv2
 import numpy as np
 import threading
-import datetime
 
 """
 Xbox controller input IDs
@@ -25,10 +24,8 @@ FORWARD_HLC_BTN = 0  # A
 RIGHT_HLC_BTN = 1  # B
 CHANGE_MODEL_AXIS = 6  # D-pad left/right
 
-
-JOY_THROTTLE_SECONDS = 1
+JOY_THROTTLE_SECONDS = 0.2
 SELECT_MODEL_THROTTLE_SECONDS = 0.2
-
 
 """
 Hardcoded model parameters
@@ -36,10 +33,11 @@ Hardcoded model parameters
 SEQUENCE_SPACE = 3
 IMAGE_INTERVAL = 60
 
-MODELS_FOLDER = "models"
+MODELS_FOLDER = os.path.dirname(__file__) + "/models"
 
 
 def get_model_list():
+    print("Looking for models in " + MODELS_FOLDER)
     from os import listdir
     from os.path import isfile, join
     return [f for f in listdir(MODELS_FOLDER) if isfile(join(MODELS_FOLDER, f))]
@@ -53,6 +51,19 @@ def steering_loss(y_true, y_pred):
     return root_mean_squared_error(y_true, y_pred)
 
 
+def get_model_params(model):
+    """
+    Extracts some info about the model from its input and output layers
+    """
+
+    forward_image_input_layer = model.get_layer('forward_image_input')
+    steer_pred_output_layer = model.get_layer('steer_pred')
+
+    (_, sequence_length, height, width, channels) = forward_image_input_layer.input_shape
+    sine_steering = (steer_pred_output_layer.output_shape == (None, 10))
+    return (height, width, channels), sequence_length, sine_steering
+
+
 class RunModel(object):
 
     def __init__(self):
@@ -63,7 +74,8 @@ class RunModel(object):
         # Model variables
         self.models = get_model_list()
         self.model = None
-        self.model_index = 0
+        self.is_loading_model = False
+        self.model_index = -1
         self.next_model_index = 0
         self.img_shape = None
         self.sequence_length = None
@@ -85,6 +97,7 @@ class RunModel(object):
         rospy.loginfo('Spurv autonomous driver initialized')
 
     def init_model(self, index):
+        self.is_loading_model = True
         self.autonomous_mode = False
         self.model = None
         self.graph = None
@@ -109,23 +122,12 @@ class RunModel(object):
         self.graph = tf.get_default_graph()
         print("Setting graph to " + str(self.graph))
 
-        (self.img_shape, self.sequence_length, self.sine_steering) = self.get_model_params(self.model)
+        (self.img_shape, self.sequence_length, self.sine_steering) = get_model_params(self.model)
 
         print("Loaded model " + self.models[index])
         print("Image shape: " + str(self.img_shape) + ", sequence length: " + str(
             self.sequence_length) + ", sine steering? " + str(self.sine_steering))
-
-    """
-    Extracts some info about the model from its input and output layers
-    """
-
-    def get_model_params(self, model):
-        forward_image_input_layer = self.model.get_layer('forward_image_input')
-        steer_pred_output_layer = self.model.get_layer('steer_pred')
-
-        (_, sequence_length, height, width, channels) = forward_image_input_layer.input_shape
-        sine_steering = (steer_pred_output_layer.output_shape == (None, 10))
-        return (height, width, channels), sequence_length, sine_steering
+        self.is_loading_model = False
 
     def init_pub_sub(self):
         self.image_subscriber = rospy.Subscriber('/fwd_camera/image_raw'
@@ -196,27 +198,22 @@ class RunModel(object):
     def on_joy_callback(self, joyMessage):
         enable = joyMessage.buttons[ENABLE_AUTONOMOUS]
         disable = joyMessage.buttons[DISABLE_AUTONOMOUS]
-        if not self.is_joy_callback_throttled:
-            if bool(enable):
-                if self.next_model_index != self.model_index:
-                    self.change_model()
-                else:
-                    self.autonomous_mode = True
-                    print('Autonomous mode enabled')
-            if bool(disable):
-                self.autonomous_mode = False
-                print('Autonomous mode disabled')
+        left_hlc = joyMessage.buttons[LEFT_HLC_BTN]
+        forward_hlc = joyMessage.buttons[FORWARD_HLC_BTN]
+        right_hlc = joyMessage.buttons[RIGHT_HLC_BTN]
 
-            left_hlc = joyMessage.buttons[LEFT_HLC_BTN]
-            forward_hlc = joyMessage.buttons[FORWARD_HLC_BTN]
-            right_hlc = joyMessage.buttons[RIGHT_HLC_BTN]
+        if not self.is_joy_callback_throttled:
+            self.set_autonomous_mode(disable, enable)
 
             if bool(left_hlc):
                 self.current_hlc = 0
+                print("HLC: left")
             elif bool(forward_hlc):
                 self.current_hlc = 1
+                print("HLC: forward")
             elif bool(right_hlc):
                 self.current_hlc = 2
+                print("HLC: right")
 
             if self.joy_throttle_timer:
                 self.joy_throttle_timer.cancel()
@@ -225,7 +222,7 @@ class RunModel(object):
             self.joy_throttle_timer.start()
             self.is_joy_callback_throttled = True
 
-        if self.is_model_callback_throttled:
+        if self.is_model_callback_throttled or self.is_loading_model:
             return
 
         self.set_or_reset_next_model_timer(SELECT_MODEL_THROTTLE_SECONDS, self.remove_model_throttle)
@@ -236,6 +233,19 @@ class RunModel(object):
         if abs(change_model_axis) != 0.0:
             self.next_model_index = (self.next_model_index + int(change_model_axis)) % len(self.models)
             print("Model to load: " + self.models[self.next_model_index])
+
+    def set_autonomous_mode(self, disable, enable):
+        if bool(enable):
+            if not self.is_loading_model and self.next_model_index != self.model_index:
+                self.change_model()
+            elif self.model is not None:
+                self.autonomous_mode = True
+                print('Autonomous mode enabled')
+            else:
+                print('Waiting for model to load...')
+        if bool(disable):
+            self.autonomous_mode = False
+            print('Autonomous mode disabled')
 
     def remove_joy_throttle(self):
         self.is_joy_callback_throttled = False
@@ -269,14 +279,16 @@ class RunModel(object):
 
 def is_running_on_ros():
     try:
-        imp.find_module('rospy')
+        import rospy
+        rospy.get_param('~frame_id', 'odom')
         return True
-    except ImportError:
+    except:
         return False
 
 
 def execute(cmd):
-    popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True, cwd=os.path.dirname(os.path.realpath(__file__)))
+    popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True, shell=True,
+                             cwd=os.path.dirname(os.path.realpath(__file__)))
     for stdout_line in iter(popen.stdout.readline, ""):
         yield stdout_line
     popen.stdout.close()
@@ -284,14 +296,18 @@ def execute(cmd):
     if return_code:
         raise subprocess.CalledProcessError(return_code, cmd)
 
+
 if __name__ == '__main__':
     print("Starting script")
     if is_running_on_ros():
         print("Running on ROS!")
+
+        # Your actual code here
+        # Import ROS-dependencies here
         import rospy
         from sensor_msgs.msg import Joy
         from sensor_msgs.msg import Image
-        from cv_bridge import CvBridge, CvBridgeError
+        from cv_bridge import CvBridge
         from ackermann_msgs.msg import AckermannDriveStamped
 
         """
@@ -302,7 +318,7 @@ if __name__ == '__main__':
         config = tf.ConfigProto()
         config.gpu_options.per_process_gpu_memory_fraction = 0.7
         session = tf.Session(config=config)
-        from tensorflow.keras.models import load_model, Model
+        from tensorflow.keras.models import load_model
         import tensorflow.keras.backend as K
         from scipy.optimize import curve_fit
 
@@ -317,6 +333,6 @@ if __name__ == '__main__':
         except KeyboardInterrupt, interrupt:
             pass
     else:
-        print("Running in plain Python, starting with rosrun...")
-        for path in execute(["/bin/bash -i -c 'rosrun spurv_examples run_keras_model.py'"]):
+        print("Running in plain Python, starting in bash...")
+        for path in execute(["/bin/bash -i -c 'python " + __file__ + "'"]):
             print(path, end="")
