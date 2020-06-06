@@ -21,7 +21,8 @@ cache = ExpiringDict(max_len=1000, max_age_seconds=2)
 
 RECORD_BUTTON = 7  # Start button
 LEFT_HLC_BUTTON = 2  # X
-FORWARD_HLC_BUTTON = 0  # A
+FOLLOW_LANE_HLC_BUTTON = 0  # A
+STRAIGHT_HLC_BUTTON = 3  # Y
 RIGHT_HLC_BUTTON = 1  # B
 TOGGLE_NOISE_BUTTON = 6  # BACK
 
@@ -29,9 +30,10 @@ HLC_RESET_SECONDS = 10
 JOY_THROTTLE_SECONDS = 1
 NOISE_DURATION_SECONDS = 1
 
-HLC_LEFT = 0
-HLC_FORWARD = 1
+HLC_LEFT = 1
 HLC_RIGHT = 2
+HLC_STRAIGHT = 3
+HLC_FOLLOW_LANE = 4
 
 IMAGE_SCALE = 0.3
 
@@ -40,7 +42,7 @@ For steering
 """
 SPEED_AXIS = 3
 SERVO_AXIS = 0
-MAX_SPEED = 0.6 # m/s
+MAX_SPEED = 5.1 # m/s
 
 # Steering noise
 MIN_NOISE = 0.2
@@ -99,7 +101,7 @@ class DataCollector:
 
         self.data_writer.writerow(self.csv_field_names)
 
-        self.high_level_command = HLC_FORWARD
+        self.high_level_command = HLC_FOLLOW_LANE
         self.frame_seq_number = 0
         self.bridge = CvBridge()
 
@@ -194,12 +196,13 @@ class DataCollector:
         record_button = joy_message.buttons[RECORD_BUTTON]
         left_hlc_button = joy_message.buttons[LEFT_HLC_BUTTON]
         right_hlc_button = joy_message.buttons[RIGHT_HLC_BUTTON]
-        reset_hlc_button = joy_message.buttons[FORWARD_HLC_BUTTON]
+        straight_hlc_button = joy_message.buttons[STRAIGHT_HLC_BUTTON]
+        follow_hlc_button = joy_message.buttons[FOLLOW_LANE_HLC_BUTTON]
         toggle_noise_button = joy_message.buttons[TOGGLE_NOISE_BUTTON]
 
         has_pressed_relevant_button = bool(record_button) \
                                       or bool(left_hlc_button) or bool(right_hlc_button) or bool(toggle_noise_button) \
-                                      or bool(reset_hlc_button)
+                                      or bool(follow_hlc_button) or bool(straight_hlc_button)
 
         # Save speed ang angle values for thread
         self.speedAxisValue = speed_axis
@@ -231,12 +234,19 @@ class DataCollector:
             self.high_level_command = HLC_RIGHT
             self.set_or_reset_hlc_timeout(HLC_RESET_SECONDS,
                                           self._reset_hlc)
-        elif bool(reset_hlc_button):
+
+        elif bool(straight_hlc_button):
+            print 'Setting high_level_command = HLC_STRAIGHT.'
+            self.high_level_command = HLC_STRAIGHT
+            self.set_or_reset_hlc_timeout(HLC_RESET_SECONDS,
+                                          self._reset_hlc)
+
+        elif bool(follow_hlc_button):
             self._reset_hlc()
 
     def _reset_hlc(self):
-        print 'Resetting high_level_command'
-        self.high_level_command = HLC_FORWARD
+        print 'Resetting high_level_command to follow'
+        self.high_level_command = HLC_FOLLOW_LANE
 
     def publishAckermann(self, speed, angle):
 
