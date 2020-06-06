@@ -234,10 +234,12 @@ class RunModel(object):
                 self.model.predict(input)
 
             steer = prediction[0][0]
-            target_speed = prediction[1][0][0] * 100
+            
+            # Target speed (in m/s)
+            target_speed = prediction[1][0][0] * 100 / 3.6
 
-            # Limit to 1 km/h for safety
-            print("Wanted target speed " + str(target_speed*3.6) + " km/h")
+            # Limit to 3.2 km/h for safety
+            print("Wanted target speed " + str(target_speed * 3.6) + " km/h")
             target_speed = min(3.2 / 3.6, target_speed)
 
             # TEMP INDOOR TEST
